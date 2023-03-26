@@ -38,8 +38,6 @@ jobs:
         builder: ${{ steps.buildx.outputs.name }}
         push: true
         tags: '${{ secrets.REGISTRY_URL }}/tlc_light/tlc_back:latest'
-        cache-from: 'type=registry,ref=${{ secrets.REGISTRY_URL }}/tlc_light/tlc_back:buildcache'
-        cache-to: 'type=registry,ref=${{ secrets.REGISTRY_URL }}/tlc_light/tlc_back:buildcache,mode=max'
 
     - uses: azure/k8s-set-context@v1
       with:

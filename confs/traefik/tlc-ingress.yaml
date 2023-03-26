@@ -1,0 +1,34 @@
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: tlc-ingressroute
+  namespace: tlc
+spec:
+  entryPoints:
+    - web
+    - websecure
+  routes:
+  - kind: Rule
+    match: Host(`tlc.carryboo.io`)
+    services:
+    - kind: Service
+      name: front
+      namespace: tlc
+      passHostHeader: true
+      port: 80
+  - kind: Rule
+    match: Host(`etherpad-tlc.carryboo.io`)
+    services:
+    - kind: Service
+      name: front
+      namespace: tlc
+      passHostHeader: true
+      port: 80
+  - kind: Rule
+    match: Host(`myadmin-tlc.carryboo.io`)
+    services:
+    - kind: Service
+      name: front
+      namespace: tlc
+      passHostHeader: true
+      port: 80
