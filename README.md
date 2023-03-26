@@ -17,7 +17,7 @@ Le traffic venant du web entre par ma box, et est filtré directement. Seul les 
 
 Le traffic web est ensuite capté par un reverse-proxy HAproxy :
 #### *confs/haproxy/haproxy.cfg*
-```yaml
+```
 global
     log         /dev/log local0
 
@@ -186,7 +186,7 @@ spec:
 Enfin, les requêtes sont dispatchées par NGINX, en se basant sur le hostname d'entrée et la requête URI, vers les différents services :
 
 #### confs/nginx/nginx.conf
-```yaml
+```
 events {
         worker_connections 1024;
     }
@@ -355,10 +355,69 @@ COPY nginx.conf /etc/nginx/nginx.conf
 ```
 
 Ces images sont compilées grâce à des Github Actions déclenchées en cas de changement, repectivement dans les dossiers ```doodlestudent/api``` et ```doodlestudent/front```, et le déploiement est mis à jour dans ces même Github Actions via Helm.   
-Les Github Actions sont effectuées directement sur mon serveur, qui est configuré comme runner sur ce repo: 
 #### ./github/workflows/build-update-front.yml
 ```yaml
 
+name: build-update-back
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+    - main
+    paths:
+    - doodlestudent/api/**
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      KUBECONFIG_FILE: '${{ secrets.CARRYBOO_KUBECONFIG }}'
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+
+    - name: Login to private registry
+      uses: docker/login-action@v1
+      with:
+        registry: registry.carryboo.io
+        username: ${{ secrets.REGISTRY_USERNAME }}
+        password: ${{ secrets.REGISTRY_PASSWORD }}
+
+    - name: Build and push
+      uses: docker/build-push-action@v2
+      with:
+        context: ./doodlestudent/docker/back/
+        file: ./doodlestudent/docker/back/Dockerfile
+        builder: ${{ steps.buildx.outputs.name }}
+        push: true
+        tags: '${{ secrets.REGISTRY_URL }}/tlc_light/tlc_back:latest'
+
+    - uses: azure/k8s-set-context@v1
+      with:
+        method: kubeconfig
+        kubeconfig: ${{ secrets.CARRYBOO_KUBECONFIG }}
+        context: default
+
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.25.6'
+
+    - name: Installing Helm
+      run: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+    - name: Deploy vault with Helm
+      run: |
+        echo "$KUBECONFIG_FILE" > /tmp/kubeconfig.yml
+        export KUBECONFIG=/tmp/kubeconfig.yml
+        helm dependency update
+        helm upgrade --install doodlestudent ./ -n tlc --create-namespace
 ```
 
 
