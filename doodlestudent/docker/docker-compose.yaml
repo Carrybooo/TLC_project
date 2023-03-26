@@ -1,0 +1,67 @@
+version: "3.8"
+
+services:
+  back:
+    image: registry.carryboo.io/tlc_light/tlc_back:latest
+    container_name: tlc_back
+    hostname: api
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+    environment:
+      - doodle.internalPadUrl=http://etherpad:9001/
+      - doodle.externalPadUrl=http://tlc-etherpad.carryboo.io/
+      - quarkus.datasource.jdbc.url=jdbc:mysql://db:3306/tlc?useUnicode=true&serverTimezone=Europe/Paris
+
+  db:
+    hostname: db
+    image: mysql
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=tlc
+      - MYSQL_USER=tlc
+      - MYSQL_PASSWORD=
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-uroot",
+          "-proot"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  etherpad:
+    image: etherpad/etherpad:latest
+    container_name: etherpad
+    hostname: etherpad
+    ports:
+      - "9001:9001"
+    volumes:
+      - ./APIKEY.txt:/opt/etherpad-lite/APIKEY.txt
+
+  mail:
+    image: bytemark/smtp
+    restart: always
+    ports:
+      - "2525:25"
+
+  front:
+    image: registry.carryboo.io/tlc_light/tlc_front:latest
+    container_name: tlc_front
+    hostname: front
+    ports:
+      - "80:80"
+    depends_on:
+      - back
+    restart: always
