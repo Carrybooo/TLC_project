@@ -412,12 +412,12 @@ jobs:
     - name: Installing Helm
       run: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
-    - name: Deploy vault with Helm
+    - name: Update doodle with Helm
       run: |
         echo "$KUBECONFIG_FILE" > /tmp/kubeconfig.yml
         export KUBECONFIG=/tmp/kubeconfig.yml
         helm dependency update
-        helm upgrade --install doodlestudent ./ -n tlc --create-namespace
+        helm upgrade --install doodlestudent ./helm/doodlestudent/ -n tlc --create-namespace
 ```
 
 
