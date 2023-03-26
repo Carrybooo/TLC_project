@@ -5,14 +5,11 @@ on:
     branches:
     - main
     paths:
-    - ./**
+    - './doodlestudent/api/**'
 
 jobs:
   deploy:
     runs-on: self-hosted
-
-    env:
-      KUBECONFIG_FILE: '${{ secrets.CARRYBOO_KUBECONFIG }}'
 
     steps:
     - name: Checkout

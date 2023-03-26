@@ -2,11 +2,12 @@
 name: build-update-back
 
 on:
-  push:
-    branches:
-    - main
-    paths:
-    - doodlestudent/api/**
+  workflow_dispatch:
+#push:
+#  branches:
+#  - main
+#  paths:
+#  - doodlestudent/api/**
 
 jobs:
   deploy:
