@@ -4,26 +4,30 @@ name: build-update-front
 on:
   push:
     branches: main
-    paths: '/doodlestudent/front/**'
+    paths: doodlestudent/front/**
+
 jobs:
   deploy:
     runs-on: self-hosted
+
+    env:
+      KUBECONFIG_FILE: '${{ secrets.CARRYBOO_KUBECONFIG }}'
+
     steps:
-      -
-        name: Checkout
+      - name: Checkout
         uses: actions/checkout@v2
-      -
-        name: Set up Docker Buildx
+
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
-      -
-        name: Login to private registry
+
+      - name: Login to private registry
         uses: docker/login-action@v1
         with:
           registry: registry.carryboo.io
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
-      -
-        name: Build and push
+
+      - name: Build and push
         uses: docker/build-push-action@v2
         with:
           context: ./doodlestudent/docker/front/
@@ -33,3 +37,24 @@ jobs:
           tags: '${{ secrets.REGISTRY_URL }}/tlc_light/tlc_front:latest'
           cache-from: 'type=registry,ref=${{ secrets.REGISTRY_URL }}/tlc_light/tlc_front:buildcache'
           cache-to: 'type=registry,ref=${{ secrets.REGISTRY_URL }}/tlc_light/tlc_front:buildcache,mode=max'
+
+      - uses: azure/k8s-set-context@v1
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.CARRYBOO_KUBECONFIG }}
+          context: admin@sekoia-io-delivery
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.25.6'
+
+      - name: Installing Helm
+        run: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      - name: Deploy vault with Helm
+        run: |
+          echo "$KUBECONFIG_FILE" > /tmp/kubeconfig.yml
+          export KUBECONFIG=/tmp/kubeconfig.yml
+          helm dependency update
+          helm upgrade --install doodlestudent ./ -n tlc --create-namespace
