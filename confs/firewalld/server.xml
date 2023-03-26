@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<zone>
+  <short>Server</short>
+  <description>personal conf</description>
+  <service name="ssh"/>
+  <service name="mdns"/>
+  <service name="dhcpv6-client"/>
+  <service name="http"/>
+  <service name="https"/>
+  <port port="1025-65535" protocol="udp"/>
+  <port port="1025-65535" protocol="tcp"/>
+  <port port="80" protocol="udp"/>
+  <port port="80" protocol="tcp"/>
+  <port port="443" protocol="udp"/>
+  <port port="443" protocol="tcp"/>
+  <forward/>
+</zone>

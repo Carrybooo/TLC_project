@@ -1,0 +1,11 @@
+#DomainName			BackendName
+
+### 
+# OTHER HIDDEN DOMAINS
+###
+
+tlc.carryboo.io			k3s
+etherpad-tlc.carryboo.io	k3s
+myadmin-tlc.carryboo.io		k3s
+
+
