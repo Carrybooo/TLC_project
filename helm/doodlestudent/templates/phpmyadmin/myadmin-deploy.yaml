@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myadmin
+  labels:
+    app: tlc
+    component: myadmin
+    {{- include "doodlestudent.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector: 
+    matchLabels:
+      component: myadmin
+  template:
+    metadata:
+      labels:
+        component: myadmin
+    spec:
+      serviceAccountName: {{ include "doodlestudent.serviceAccountName" . }}
+      containers:
+        - name: {{ .Chart.Name }}-myadmin
+          image: phpmyadmin/phpmyadmin:latest
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP

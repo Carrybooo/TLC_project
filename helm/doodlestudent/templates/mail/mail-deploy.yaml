@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mail
+  labels:
+    app: tlc
+    component: mail
+    {{- include "doodlestudent.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector: 
+    matchLabels:
+      component: mail
+  template:
+    metadata:
+      labels:
+        component: mail
+    spec:
+      serviceAccountName: {{ include "doodlestudent.serviceAccountName" . }}
+      containers:
+        - name: {{ .Chart.Name }}-mail
+          image: bytemark/smtp:latest
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 25
+              protocol: TCP

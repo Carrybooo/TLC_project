@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-db
+  labels:
+    app: tlc
+    component: mysql-db
+    {{- include "doodlestudent.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      component: mysql-db
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        component: mysql-db
+    spec:
+      serviceAccountName: {{ include "doodlestudent.serviceAccountName" . }}
+      containers:
+      - name: {{ .Chart.Name }}-mysql
+        image: mysql
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env:
+        - name: MYSQL_DATABASE
+          value: tlc
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: db-secret
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: rootPassword
+              name: db-secret
+        - name: MYSQL_USERNAME
+          valueFrom:
+            secretKeyRef:
+              key: username
+              name: db-secret
+        ports:
+        - name: http
+          containerPort: 3306
+          protocol: TCP
+        volumeMounts:
+        - name: db-persistence
+          mountPath: /var/lib/mysql
+        volumeMounts:
+        - name: db-initscript
+          mountPath: /docker-entrypoint-initdb.d/V1__Initial_version.sql
+          subPath: V1__Initial_version.sql
+      volumes:
+      - name: db-persistence
+        persistentVolumeClaim:
+          claimName: db-pvc
+      volumes:
+      - name: db-initscript
+        configMap:
+          name: db-cfgmap
+        
