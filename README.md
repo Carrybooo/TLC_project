@@ -1,2 +1,367 @@
 # TLC_project
-TLC M2 project
+
+Ce repo a pour but de contenir la partie déploiement sur K8S du projet TLC. 
+
+***Il est accessible ici : https://tlc.carryboo.io***   
+
+# Diagramme global (TLC-chart) :
+
+![TLC-chart](TLC-chart.png)
+
+Le serveur est un serveur privé, hébergé chez moi, sous le nom de domaine carryboo.io  
+
+Tous les fichiers et codes montrés ci-dessous sonc disponibles dans le dossier ```confs```.   
+
+Le traffic venant du web entre par ma box, et est filtré directement. Seul les ports 80,443,6443 et un port SSH modifié (non montré) sont transférés vers le serveur.   
+![NAT-rules](confs/box-router/NAT-rules.png)   
+
+Le traffic web est ensuite capté par un reverse-proxy HAproxy :
+#### *confs/haproxy/haproxy.cfg*
+```yaml
+global
+    log         /dev/log local0
+
+    chroot      /var/lib/haproxy
+    pidfile     /var/run/haproxy.pid
+    maxconn     4000
+    user        haproxy
+    group       haproxy
+    daemon
+
+    # turn on stats unix socket
+    stats socket /var/lib/haproxy/stats
+
+    # utilize system-wide crypto-policies
+    ssl-default-bind-ciphers PROFILE=SYSTEM
+    ssl-default-server-ciphers PROFILE=SYSTEM
+
+defaults
+    mode                    http
+    log                     global
+    option                  httplog
+    #option forwardfor       except 127.0.0.1
+    #option forwardfor	    except ::1
+    option                  redispatch
+    retries                 3
+    timeout http-request    10s
+    timeout queue           1m
+    timeout connect         10s
+    timeout client          1m
+    timeout server          1m
+    timeout http-keep-alive 10s
+    timeout check           10s
+    maxconn                 3000
+
+#######################################################################
+
+frontend http
+	bind *:80,:::80
+	bind *:443,:::443 ssl crt /etc/haproxy/certs/fullchain.pem
+	mode http
+	option httplog
+	http-request capture req.hdr(Host) len 30
+	log-format "%ci:%cp [%tr] %ft %b/%s %hr %hs %TR/%Tw/%Tc/%Tr/%Ta %ST %B %CC %CS %tsc %ac/%fc/%bc/%sc/%rc %sq/%bq %{+Q}r"
+	http-request redirect scheme https unless { ssl_fc }
+	use_backend %[req.hdr(host),lower,map_dom(/etc/haproxy/maps/hosts.map,web)]
+
+#######################################################################
+	
+#####
+# OTHER BACKENDS
+#####
+
+backend k3s
+	option forwardfor
+	http-request add-header X-forwarded-Proto https if { ssl_fc }
+	server k3s-cluster 192.168.1.100:8000 maxconn 32
+
+#####
+# OTHER BACKENDS
+#####
+```
+
+Dans le cas HTTPS les certificats sont gérés par un certbot LetsEncrypt tournant sur le serveur, qui les renouvelle automatiquement:       
+#### *confs/letsencrypt/carryboo.io.conf*
+```yaml
+# renew_before_expiry = 30 days
+version = 2.3.0
+archive_dir = /etc/letsencrypt/archive/carryboo.io
+cert = /etc/letsencrypt/live/carryboo.io/cert.pem
+privkey = /etc/letsencrypt/live/carryboo.io/privkey.pem
+chain = /etc/letsencrypt/live/carryboo.io/chain.pem
+fullchain = /etc/letsencrypt/live/carryboo.io/fullchain.pem
+
+# Options used in the renewal process
+[renewalparams]
+account = #HIDDEN
+authenticator = dns-cloudflare
+server = https://acme-v02.api.letsencrypt.org/directory
+key_type = #HIDDEN
+dns_cloudflare_credentials = /etc/letsencrypt/dns-credentials/token
+```
+
+Les 3 domaines utilisés pour ce projet sont les suivants :
+- https://tlc.carryboo.io
+- https://etherpad-tlc.carryboo.io
+- https://myadmin-tlc.carryboo.io
+
+![CNAMES](confs/DNS/DNS-CNAME.png)   
+
+Le HAproxy agit comme une API-gateway, il match le champ Host de la requête avec une map Domain/Backend, et redirige la requête sur le Backend souhaité :
+#### *confs/haproxy/hosts.map*
+```yaml
+#DomainName			BackendName
+
+tlc.carryboo.io			k3s
+etherpad-tlc.carryboo.io	k3s
+myadmin-tlc.carryboo.io		k3s
+```  
+
+
+Dans le cadre de ce projet, la partie doodle est hébergée sur un cluster K3S, dont les ports d'entrée vers le proxy Traefik ont été modifiés pour éviter un conflit avec le HAproxy :
+#### *confs/k3s/traefik-config.yaml*
+```yaml
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    ports:
+      web:
+        exposedPort: 8000
+        expose: true
+      websecure:
+        exposedPort: 8443
+        expose: true
+    logs:
+      general:
+        level: DEBUG
+    additionaArguments:
+      - "--providers.kubernetescrd.allowCrossNamespace=true"
+```
+
+
+On arrive ensuite sur le r-proxy Traefik. Ce dernier se base sur des ingressRules pour rediriger le traffic vers le r-proxy NGINX, présent dans le conteneur du front doodle :
+
+#### *confs/traefik/tlc-ingress.yaml*
+```yaml
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: tlc-ingressroute
+  namespace: tlc
+spec:
+  entryPoints:
+    - web
+    - websecure
+  routes:
+  - kind: Rule
+    match: Host(`tlc.carryboo.io`)
+    services:
+    - kind: Service
+      name: front
+      namespace: tlc
+      passHostHeader: true
+      port: 80
+  - kind: Rule
+    match: Host(`etherpad-tlc.carryboo.io`)
+    services:
+    - kind: Service
+      name: front
+      namespace: tlc
+      passHostHeader: true
+      port: 80
+  - kind: Rule
+    match: Host(`myadmin-tlc.carryboo.io`)
+    services:
+    - kind: Service
+      name: front
+      namespace: tlc
+      passHostHeader: true
+      port: 80
+```
+
+Enfin, les requêtes sont dispatchées par NGINX, en se basant sur le hostname d'entrée et la requête URI, vers les différents services :
+
+#### confs/nginx/nginx.conf
+```yaml
+events {
+        worker_connections 1024;
+    }
+
+http {
+
+    access_log  /var/log/nginx/access.log;
+    error_log  /var/log/nginx/error.log;
+    
+    server {
+        listen       80;
+        listen  [::]:80;
+        server_name  tlc.carryboo.io;
+
+        location /api {
+            proxy_pass http://api:8080/api;
+            proxy_set_header Host $http_host;
+	    proxy_set_header X-Forwarded-Proto https;
+        }
+
+        location / {
+            root   /usr/share/nginx/html;
+            index  index.html index.htm;
+            try_files $uri $uri/ /index.html?$args;
+        }
+
+        error_page  404              /404.html;
+
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+            root   /usr/share/nginx/html;
+        }
+
+    }
+
+    server {
+        listen       80;
+        listen  [::]:80;
+        server_name  myadmin-tlc.carryboo.io;
+
+        location /{
+            proxy_pass http://myadmin:80;
+            proxy_set_header Host $http_host;
+	    proxy_set_header X-Forwarded-Proto https;
+
+        }
+
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+            root   /usr/share/nginx/html;
+        }
+    }
+
+    server {
+        listen       80;
+        listen  [::]:80;
+        server_name  etherpad-tlc.carryboo.io;
+        location / {
+            proxy_pass http://etherpad:9001;
+            proxy_set_header Host $http_host;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header X-Real-IP  $remote_addr;
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Forwarded-Proto https;
+        }
+
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+            root   /usr/share/nginx/html;
+        }
+    }
+}
+```
+
+Le déploiement du doodle se fait grâce à un chart Helm custom, présent dans le dossier ```helm``` à la racine de ce repo.
+
+Il déploie la liste de composants suivante : 
+                                                                             
+- db:
+    - configmap
+    - déploiement 
+    - private volume
+    - private volume claim 
+    - secret 
+    - service 
+- front:
+    - déploiement 
+    - service 
+- back:
+    - déploiement
+    - service
+- ether:
+    - configmap
+    - déploiement 
+    - service 
+- mail:
+    - déploiement 
+    - service 
+- phpmyadmin:
+    - déploiement 
+    - service 
+- ingressRule (tlc, ether-tlc, myadmin-tlc)
+- serviceAccount   
+
+Tous les déploiements utilisent 1 seul pod, sauf le back, qui est répliqué sur 3 pods :   
+![kube-get-all](confs/kube-get-all.png)
+
+
+Ce chart Helm pull les images docker depuis registry privé Harbor, lui aussi hébergé dans ce cluster K3S et déployé grâce à Helm, et disponible à l'adresse ***https://registry.carryboo.io***   
+
+Les images docker construites pour le back et le front sont optimisées pour faire le minimum de place possible. On utilise pour cela des wrappers basés sur alpine, et un build en plusieurs étapes, qui nous permet de garder uniquement le code nécessaire, sans les reliquats de compilation:
+
+#### **image back:**
+```Dockerfile
+## BUILDING phase
+FROM alpine:3.17 AS build
+
+RUN apk add --no-cache maven git
+
+##Clone repo
+RUN git clone https://github.com/damienMS/doodlestudent.git
+
+WORKDIR /doodlestudent/api
+
+RUN git checkout develop
+
+##Compile the back
+RUN mvn clean package -Dquarkus.package.type=uber-jar
+
+
+## RUN phase
+FROM alpine:3.17
+
+RUN apk add --no-cache openjdk11
+
+##Add it on the Run image and start it 
+COPY --from=build /doodlestudent/api/target/tlcdemoApp-1.0.0-SNAPSHOT-runner.jar /target/
+
+CMD [ "java", "-jar", "/target/tlcdemoApp-1.0.0-SNAPSHOT-runner.jar" ]
+```
+#### **image front:**
+```Dockerfile
+## BUILD phase
+FROM node:12-alpine AS build
+
+RUN apk add --no-cache git
+
+## Cloning the repository
+RUN git clone https://github.com/damienMS/doodlestudent.git
+
+## Going to the front directory
+WORKDIR /doodlestudent/front
+
+## Installing the dependencies
+RUN npm install
+
+## Compiling the project
+RUN npm run build
+
+## RUN phase
+FROM nginx:1-alpine
+COPY --from=build /doodlestudent/front/dist/tlcfront /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/nginx.conf
+```
+
+Ces images sont compilées grâce à des Github Actions déclenchées en cas de changement, repectivement dans les dossiers ```doodlestudent/api``` et ```doodlestudent/front```, et le déploiement est mis à jour dans ces même Github Actions via Helm.   
+Les Github Actions sont effectuées directement sur mon serveur, qui est configuré comme runner sur ce repo: 
+#### ./github/workflows/build-update-front.yml
+```yaml
+
+```
+
+
+
+
+### MONITORING
