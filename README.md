@@ -1,16 +1,27 @@
 # TLC_project
 
-Ce repo a pour but de contenir la partie déploiement sur K8S du projet TLC. 
+Membres du groupe:
+- Ramoné Benjamin
+- Méranthe Damien
+- Guerlesquin Valentin
 
-***Il est accessible ici : https://tlc.carryboo.io***   
+---
+
+Ce repo a pour but de contenir la partie déploiement sur K8S du projet TLC.
+
+***Les services sont accessibles ici :*** 
+- https://tlc.carryboo.io
+- https://etherpad-tlc.carryboo.io
+- https://myadmin-tlc.carryboo.io (id: tlc; mdp: tlc)
+
 
 # Diagramme global (TLC-chart) :
 
-![TLC-chart](TLC-chart.png)
+![TLC-chart](confs/TLC-chart.png)
 
-Le serveur est un serveur privé, hébergé chez moi, sous le nom de domaine carryboo.io  
+Le serveur est un serveur privé, hébergé chez moi (Valentin), sous le nom de domaine carryboo.io  
 
-Tous les fichiers et codes montrés ci-dessous sonc disponibles dans le dossier ```confs```.   
+Les fichiers et codes de configuration montrés ci-dessous sonc regroupés dans le dossier ```confs``` pour être plus facilement consultables.   
 
 Le traffic venant du web entre par ma box, et est filtré directement. Seul les ports 80,443,6443 et un port SSH modifié (non montré) sont transférés vers le serveur.   
 ![NAT-rules](confs/box-router/NAT-rules.png)   
@@ -118,7 +129,7 @@ myadmin-tlc.carryboo.io		k3s
 ```  
 
 
-Dans le cadre de ce projet, la partie doodle est hébergée sur un cluster K3S, dont les ports d'entrée vers le proxy Traefik ont été modifiés pour éviter un conflit avec le HAproxy :
+Dans le cadre de ce projet, la partie doodle est hébergée sur un cluster K3S, dont les ports d'entrée vers le reverse-proxy Traefik ont été modifiés pour éviter un conflit avec le HAproxy :
 #### *confs/k3s/traefik-config.yaml*
 ```yaml
 apiVersion: helm.cattle.io/v1
@@ -143,7 +154,7 @@ spec:
 ```
 
 
-On arrive ensuite sur le r-proxy Traefik. Ce dernier se base sur des ingressRules pour rediriger le traffic vers le r-proxy NGINX, présent dans le conteneur du front doodle :
+On arrive ensuite sur le reverse-proxy Traefik. Ce dernier se base sur des ingressRules pour rediriger le traffic vers le reverse-proxy NGINX, présent dans le conteneur du front doodle :
 
 #### *confs/traefik/tlc-ingress.yaml*
 ```yaml
@@ -297,8 +308,8 @@ Tous les déploiements utilisent 1 seul pod, sauf le back, qui est répliqué su
 ![kube-get-all](confs/kube-get-all.png)
 
 
-Ce chart Helm pull les images docker depuis registry privé Harbor, lui aussi hébergé dans ce cluster K3S et déployé grâce à Helm, et disponible à l'adresse ***https://registry.carryboo.io***   
-
+Ce chart Helm pull les images docker depuis un registry privé **Harbor**, lui aussi hébergé dans ce cluster K3S et déployé grâce à Helm, et disponible à l'adresse ***https://registry.carryboo.io***   
+*(Le code du fichier values.yaml utilisé étant très long, je ne l'affiche pas, mais il est dans /confs/harbor/)*
 Les images docker construites pour le back et le front sont optimisées pour faire le minimum de place possible. On utilise pour cela des wrappers basés sur alpine, et un build en plusieurs étapes, qui nous permet de garder uniquement le code nécessaire, sans les reliquats de compilation:
 
 #### **image back:**
@@ -354,7 +365,8 @@ COPY --from=build /doodlestudent/front/dist/tlcfront /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/nginx.conf
 ```
 
-Ces images sont compilées grâce à des Github Actions déclenchées en cas de changement, repectivement dans les dossiers ```doodlestudent/api``` et ```doodlestudent/front```, et le déploiement est mis à jour dans ces même Github Actions via Helm.   
+Ces images sont compilées grâce à des Github Actions déclenchées en cas de changement dans les dossiers ```doodlestudent/api``` et ```doodlestudent/front``` repectivement, et le déploiement est mis à jour dans ces même Github Actions via Helm.  
+Toujours dans le but d'héberger la majorité des composants de ce projet, les Github Actions sont effectuées directement sur le serveur en self-hosted, car il est configuré comme runner pour ce repo. ["(runner)"](https://github.com/Carrybooo/TLC_project/settings/actions/runners/2)
 #### ./github/workflows/build-update-front.yml
 ```yaml
 
@@ -421,6 +433,11 @@ jobs:
 ```
 
 
+### MONITORING
 
+Pour ce qui est du monitoring, actuellement, le cluster n'est pas monitoré directement. Le monitoring se fait directement sur le serveur via Netdata, qui permet de récupérer et afficher des métriques facilement:
+![netdata](confs/netdata.png)
 
-### MONITORING
+Le but était de rajouter une instance spécifique dans le cluster mais le temps a manqué pour aller plus loin.
+
+C'est tout pour nous ! 
