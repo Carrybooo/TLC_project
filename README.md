@@ -438,6 +438,14 @@ jobs:
 Pour ce qui est du monitoring, actuellement, le cluster n'est pas monitoré directement. Le monitoring se fait directement sur le serveur via Netdata, qui permet de récupérer et afficher des métriques facilement:
 ![netdata](confs/netdata.png)
 
-Le but était de rajouter une instance spécifique dans le cluster mais le temps a manqué pour aller plus loin.
+Le but était de rajouter une instance spécifique dans le cluster mais le temps a manqué pour aller plus loin.   
+
+---
+
+***EDIT 28/03*** (Un peu tard mais je voulais le faire) : J'ai rajouté netdata au cluster comme prévu, et je vous ai invité sur votre adresse gmail liée à votre compte github M Barais. La gestion des droits en mode gratuit étant un peu faible, vous avez donc accès à quasiment tout. Pas de bêtises ! ;)   
+
+![netdata-cluster](confs/netdata-cluster.png)
+
+--- 
 
 C'est tout pour nous ! 
