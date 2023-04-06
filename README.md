@@ -382,7 +382,7 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     env:
       KUBECONFIG_FILE: '${{ secrets.CARRYBOO_KUBECONFIG }}'
